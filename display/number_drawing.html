@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>28x28 Pixel Drawing with TFLite</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-cpu"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-tflite/dist/tf-tflite.min.js"></script>
+  </head>
+  <body>
+    <canvas
+      id="canvas"
+      width="280"
+      height="280"
+      style="border: 1px solid black"
+    ></canvas>
+    <button id="clearCanvas">Clear Canvas</button>
+    <button id="predict">Predict</button>
+    <p id="prediction-result" style="margin-top: 40px">Prediction:</p>
+
+    <script>
+      const canvas = document.getElementById('canvas');
+      const ctx = canvas.getContext('2d');
+      const scaleFactor = 10;
+      let drawing = false;
+      let tfliteModel;
+
+      // Initialize the canvas with a black background
+      ctx.fillStyle = 'black';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      async function loadModel() {
+        try {
+          const response = await fetch('../trained_models/M3.tflite');
+          const buffer = await response.arrayBuffer();
+          tfliteModel = await tflite.loadTFLiteModel(buffer);
+          console.log('Model Loaded!');
+        } catch (error) {
+          console.error('Error loading model', error);
+        }
+      }
+      loadModel();
+
+      canvas.addEventListener('mousedown', () => (drawing = true));
+      canvas.addEventListener('mouseup', () => (drawing = false));
+      canvas.addEventListener('mouseleave', () => (drawing = false));
+      canvas.addEventListener('mousemove', draw);
+
+      function draw(e) {
+        if (!drawing) return;
+        const rect = canvas.getBoundingClientRect();
+        const x = Math.floor((e.clientX - rect.left) / scaleFactor);
+        const y = Math.floor((e.clientY - rect.top) / scaleFactor);
+        ctx.fillStyle = 'white'; // Draw in white
+        ctx.fillRect(
+          x * scaleFactor,
+          y * scaleFactor,
+          scaleFactor,
+          scaleFactor
+        );
+      }
+
+      document.getElementById('clearCanvas').addEventListener('click', () => {
+        ctx.fillStyle = 'black';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      });
+
+      document.getElementById('predict').addEventListener('click', async () => {
+        if (!tfliteModel) {
+          alert('Model not loaded yet!');
+          return;
+        }
+
+        const imageData = preprocessCanvas();
+        const inputTensor = tf.tensor(imageData, [1, 28, 28, 1]);
+        const output = tfliteModel.predict(inputTensor);
+        const predictions = output.dataSync();
+        const predictedLabel = predictions.indexOf(Math.max(...predictions));
+
+        document.getElementById(
+          'prediction-result'
+        ).textContent = `Prediction: ${predictedLabel}`;
+      });
+
+      function preprocessCanvas() {
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = 28;
+        tempCanvas.height = 28;
+        const tempCtx = tempCanvas.getContext('2d');
+
+        // Draw the main canvas onto the temporary canvas
+        tempCtx.drawImage(canvas, 0, 0, 28, 28);
+
+        // Visual check: append the tempCanvas to the document to verify its contents
+        document.body.appendChild(tempCanvas);
+        tempCanvas.style.border = '1px solid red';
+        tempCanvas.style.position = 'absolute';
+        tempCanvas.style.top = '300px';
+
+        const imgData = tempCtx.getImageData(0, 0, 28, 28);
+        let grayscaleData = [];
+
+        for (let i = 0; i < imgData.data.length; i += 4) {
+          const r = imgData.data[i];
+          const g = imgData.data[i + 1];
+          const b = imgData.data[i + 2];
+          const avg = (r + g + b) / 3;
+
+          grayscaleData.push(avg / 255);
+        }
+
+        return grayscaleData;
+      }
+    </script>
+  </body>
+</html>
